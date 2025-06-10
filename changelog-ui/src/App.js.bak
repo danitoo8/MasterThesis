@@ -1,0 +1,167 @@
+// src/App.js
+import React, { useEffect, useState, useCallback } from 'react';
+import { ethers } from 'ethers';
+import { CHANGELOG_ABI } from './abi';
+import './App.css';
+
+const CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS;
+const CHAIN_ID = process.env.REACT_APP_CHAIN_ID;
+
+function App() {
+  const [provider, setProvider] = useState();
+  const [signer, setSigner] = useState();
+  const [account, setAccount] = useState();
+  const [contract, setContract] = useState();
+  const [requiredApprovals, setRequiredApprovals] = useState();
+  const [approvalPeriod, setApprovalPeriod] = useState();
+  const [changeIds, setChangeIds] = useState([]);
+  const [changes, setChanges] = useState([]);
+  const [newDesc, setNewDesc] = useState('');
+  const [newHash, setNewHash] = useState('');
+  const [refresh, setRefresh] = useState(0);
+
+  // 1) Conectar MetaMask
+  const connectWallet = useCallback(async () => {
+    if (!window.ethereum) return alert('Instala MetaMask');
+    const prov = new ethers.providers.Web3Provider(window.ethereum);
+    await prov.send('eth_requestAccounts', []);
+    const sig = prov.getSigner();
+    const acct = await sig.getAddress();
+    const net = await prov.getNetwork();
+    if (net.chainId.toString() !== CHAIN_ID) {
+      alert('Cambia a Sepolia Test Network en MetaMask');
+      return;
+    }
+    setProvider(prov);
+    setSigner(sig);
+    setAccount(acct);
+    setContract(new ethers.Contract(CONTRACT_ADDRESS, CHANGELOG_ABI, sig));
+  }, []);
+
+  // 2) Leer configuración y IDs
+  useEffect(() => {
+    if (!contract) return;
+    (async () => {
+      setRequiredApprovals((await contract.requiredApprovals()).toString());
+      setApprovalPeriod((await contract.approvalPeriod()).toString());
+      const ids = await contract.getAllChangeIds();
+      setChangeIds(ids.map(i => i.toNumber()));
+    })();
+  }, [contract, refresh]);
+
+  // 3) Leer cada ChangeEntry
+  useEffect(() => {
+    if (!contract || changeIds.length === 0) {
+      setChanges([]);
+      return;
+    }
+    (async () => {
+      const data = await Promise.all(
+        changeIds.map(id => contract.getChange(id))
+      );
+      setChanges(data.map(c => ({
+        id: c.id.toNumber(),
+        description: c.description,
+        documentHash: c.documentHash,
+        proposer: c.proposer,
+        status: c.status,  
+        timestamp: new Date(c.timestamp.toNumber() * 1000).toLocaleString(),
+        approvers: c.approvers,
+        approverComments: c.approverComments,
+        reopeners: c.reopeners,
+        reopenComments: c.reopenComments
+      })));
+    })();
+  }, [contract, changeIds]);
+
+  // 4) Ejecutar transacciones y refrescar
+  const doTx = async (fn, ...args) => {
+    try {
+      const tx = await fn(...args);
+      await tx.wait();
+      setRefresh(r => r + 1);
+    } catch (err) {
+      console.error(err.reason || err.message);
+      alert(err.reason || 'Transacción falló');
+    }
+  };
+
+  if (!account) {
+    return (
+      <div className="container">
+        <button onClick={connectWallet}>Conectar MetaMask</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container">
+      <h1>📋 ChangeLog PM²</h1>
+      <p><b>Cuenta:</b> {account}</p>
+      <p>
+        <b>Votos requeridos:</b> {requiredApprovals} &nbsp;
+        <b>Plazo (seg):</b> {approvalPeriod}
+      </p>
+
+      <section className="card">
+        <h2>➕ Proponer Cambio</h2>
+        <input
+          type="text" placeholder="Descripción"
+          value={newDesc}
+          onChange={e => setNewDesc(e.target.value)}
+        />
+        <input
+          type="text" placeholder="Hash documento"
+          value={newHash}
+          onChange={e => setNewHash(e.target.value)}
+        />
+        <button
+          onClick={() => doTx(contract.proposeChange, newDesc, newHash)}
+        >Proponer</button>
+      </section>
+
+      <section>
+        <h2>📑 Cambios Registrados</h2>
+        {changes.map(c => (
+          <div key={c.id} className="card">
+            <p>
+              <b>ID:</b> {c.id}  
+              <b> Estado:</b> {['Proposed','Approved','Rejected','Closed'][c.status]}
+            </p>
+            <p><b>Descripción:</b> {c.description}</p>
+            <p><b>Hash:</b> {c.documentHash}</p>
+            <p><b>Propuesto por:</b> {c.proposer}</p>
+            <p><b>Fecha:</b> {c.timestamp}</p>
+
+            {c.status === 0 && (
+              <>
+                <button onClick={() =>
+                  doTx(contract.approveChange, c.id, 'OK desde UI')
+                }>👍 Aprobar</button>
+                <button onClick={() =>
+                  doTx(contract.rejectChange, c.id, '🚫 Rechazo')
+                }>👎 Rechazar</button>
+              </>
+            )}
+            {c.status === 1 && account === c.proposer && (
+              <button onClick={() =>
+                doTx(contract.closeChange, c.id)
+              }>🔒 Cerrar</button>
+            )}
+            {c.status === 3 && (
+              <button onClick={() =>
+                doTx(contract.reopenChange, c.id, 'Nueva info UI')
+              }>🔄 Reabrir</button>
+            )}
+          </div>
+        ))}
+      </section>
+
+      <button className="refresh" onClick={() => setRefresh(r => r + 1)}>
+        🔄 Refrescar
+      </button>
+    </div>
+  );
+}
+
+export default App;

@@ -1,0 +1,29 @@
+# Node dependencies
+node_modules/
+
+# Solidity build output
+artifacts/
+cache/
+typechain/
+coverage/
+
+# Build output (frontend or others)
+dist/
+build/
+.next/
+out/
+
+# Configs & sensitive files
+.env
+.env.*
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE/editor config
+.vscode/
+.idea/
+
+# Logs
+*.log

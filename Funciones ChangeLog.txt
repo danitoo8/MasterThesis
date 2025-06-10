@@ -1,0 +1,259 @@
+**********************************************************************************************************
+Funciones de escritura / transacción (Todas consumen gas y abren un popup de MetaMask)
+**********************************************************************************************************
+
+1. proposeChange(string _description, string _documentHash)
+Qué hace: Crea un nuevo cambio en estado Proposed.
+
+Quién: Cualquier cuenta (no requiere rol).
+
+Input:
+
+_description → texto descriptivo (e.g. "Actualizar plan de calidad").
+
+_documentHash → hash del doc. (e.g. "QmXyz123…").
+
+Output/eventos:
+
+No retorna nada.
+
+Emite ChangeProposed(uint256 id, address proposer).
+**********************************************************************************************************
+2. approveChange(uint256 _id, string _comment)
+Qué hace: Vota a favor de un cambio pendiente; si alcanza requiredApprovals, pasa a Approved.
+
+Quién: Solo quien tenga rol CHANGE_APPROVER_ROLE.
+
+Input:
+
+_id → identificador del cambio (p.ej. 0, 1, …).
+
+_comment → texto justificativo.
+
+Output/eventos:
+
+Emite primero ChangeApprovalReceived(id, approver, comment, totalApprovals).
+
+Si cumple umbral, además ChangeApproved(id).
+**********************************************************************************************************
+3. rejectChange(uint256 _id, string _comment)
+Qué hace: Rechaza un cambio en estado Proposed de forma instantánea.
+
+Quién: Solo CHANGE_APPROVER_ROLE.
+
+Input:
+
+_id → ID del cambio.
+
+_comment → texto justificativo.
+
+Output/eventos:
+
+Emite ChangeRejected(id, rejector, comment).
+**********************************************************************************************************
+4. closeChange(uint256 _id)
+Qué hace: Marca un cambio Approved como Closed.
+
+Quién: Solo PROJECT_MANAGER_ROLE (la cuenta que lo desplegó, por defecto).
+
+Input:
+
+_id → ID del cambio.
+
+Output/eventos:
+
+Emite ChangeClosed(id).
+**********************************************************************************************************
+5. reopenChange(uint256 _id, string _reason)
+Qué hace: Reabre un cambio Closed, limpia votos pasados y registra motivo.
+
+Quién: Solo CHANGE_APPROVER_ROLE.
+
+Input:
+
+_id → ID del cambio.
+
+_reason → razón de reapertura.
+
+Output/eventos:
+
+Emite ChangeReopened(id, reopener, reason).
+**********************************************************************************************************
+6. queryChange(uint256 _id)
+Qué hace: Devuelve la estructura completa de un cambio y emite un evento para auditoría pasiva.
+
+Quién: Solo PROJECT_MANAGER_ROLE.
+
+Input:
+
+_id → ID del cambio.
+
+Output/eventos:
+
+Retorna ChangeEntry (el struct completo).
+
+Emite ChangeQueried(id, requester).
+**********************************************************************************************************
+7. grantRole(bytes32 role, address account)
+Qué hace: Otorga el role indicado a account.
+
+Quién: Solo quien tenga DEFAULT_ADMIN_ROLE (la cuenta admin).
+
+Input:
+
+role → uno de los bytes32: PROJECT_MANAGER_ROLE o CHANGE_APPROVER_ROLE.
+
+account → dirección ethereum.
+
+Output/eventos:
+
+Emite RoleGranted(role, account, sender) (evento de AccessControl).
+**********************************************************************************************************
+8. revokeRole(bytes32 role, address account)
+Qué hace: Revoca el role de account.
+
+Quién: Solo DEFAULT_ADMIN_ROLE.
+
+Input:
+
+Igual que grantRole.
+
+Output/eventos:
+
+Emite RoleRevoked(role, account, sender).
+**********************************************************************************************************
+9. renounceRole(bytes32 role, address account)
+Qué hace: Permite a account renunciar al role que posea.
+
+Quién: Solo la misma account (msg.sender = account).
+
+Input:
+
+role → bytes32 del rol.
+
+account → su propia dirección.
+
+Output/eventos:
+
+Emite RoleRevoked(role, account, sender).
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+
+**********************************************************************************************************
+Funciones de lectura (view)
+**********************************************************************************************************
+
+1. getChange(uint256 _id) → ChangeEntry
+Qué hace: Devuelve todos los campos de un cambio.
+
+Quién: Cualquiera.
+
+Input:
+
+_id → ID del cambio.
+
+Output:
+
+js
+Copiar
+Editar
+{
+  id: uint256,
+  description: string,
+  documentHash: string,
+  proposer: address,
+  status: uint8,          // 0=Proposed,1=Approved,2=Rejected,3=Closed
+  timestamp: uint256,
+  approvers: address[],
+  approverComments: string[],
+  reopeners: address[],
+  reopenComments: string[],
+  reopenTimestamps: uint256[]
+}
+**********************************************************************************************************
+2. getAllChangeIds() → uint256[]
+Qué hace: Lista todos los IDs de cambio.
+
+Quién: Cualquiera.
+
+Input: —
+
+Output: Array de enteros.
+**********************************************************************************************************
+3. getUserChangeIds(address _user) → uint256[]
+Qué hace: IDs de todos los cambios propuestos por _user.
+
+Quién: Cualquiera.
+
+Input:
+
+_user → address.
+
+Output: Array de IDs.
+**********************************************************************************************************
+4. countChangesByStatus(uint8 _status) → uint256
+Qué hace: Cuenta cuántos cambios están en _status.
+
+Quién: Cualquiera.
+
+Input:
+
+_status → 0..3 (Status.Proposed, …).
+
+Output: Entero con la cuenta.
+**********************************************************************************************************
+5. listChangesByStatus(uint8 _status) → uint256[]
+Qué hace: Lista los IDs que tienen ese _status.
+
+Quién: Cualquiera.
+
+Input:
+
+Igual que countChangesByStatus.
+
+Output: Array de IDs.
+**********************************************************************************************************
+6. hasRole(bytes32 role, address account) → bool
+Qué hace: Indica si account tiene el role.
+
+Quién: Cualquiera.
+
+Input:
+
+role → bytes32 de rol.
+
+account → address.
+
+Output: true/false.
+**********************************************************************************************************
+7. getRoleAdmin(bytes32 role) → bytes32
+Qué hace: Devuelve qué rol administra al role dado (por defecto DEFAULT_ADMIN_ROLE).
+
+Quién: Cualquiera.
+
+Input:
+
+role.
+
+Output: Rol administrador.
+**********************************************************************************************************
+8. supportsInterface(bytes4 interfaceId) → bool
+Qué hace: Cumplimiento de ERC-165 para AccessControl.
+
+Quién: Cualquiera.
+
+Input:
+
+interfaceId → selector (p.ej. 0x01ffc9a7).
+
+Output: true/false.
+**********************************************************************************************************
+9. Constantes de configuración
+requiredApprovals() → uint256
+Ventana mínima de aprobaciones (uInt8).
+
+approvalPeriod() → uint256
+Periodo en segundos (3 días = 3*86400).
+
+PROJECT_MANAGER_ROLE(), CHANGE_APPROVER_ROLE(), DEFAULT_ADMIN_ROLE() → bytes32
+Los identificadores de rol; valen para pasarlos a grantRole, hasRole, etc.
